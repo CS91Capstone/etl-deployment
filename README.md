@@ -15,3 +15,9 @@ Steps:
 TO Run:
 
 python3 deploy.py {tag} 
+
+&nbsp;
+
+Note on lambda_function.py:
+- A lambda function to process and deploy other lambda functions from GitHub to s3 bucket
+- Must include https://github.com/lambci/git-lambda-layer in the layer of the lambda function
