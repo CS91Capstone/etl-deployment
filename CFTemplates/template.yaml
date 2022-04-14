@@ -1,0 +1,165 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: AWS API Gateway with a Lambda Integration for receiving code from github.
+
+Resources:
+
+  ApiGatewayDeployApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      ApiKeySourceType: HEADER
+      Description: An API Gateway with a Lambda Integration
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Name: deployLambda-api
+
+
+  ApiGatewayV1Resource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGatewayDeployApi.RootResourceId
+      PathPart: 'v1'
+      RestApiId: !Ref ApiGatewayDeployApi
+
+  ApiGatewayDeployResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayV1Resource
+      PathPart: 'Deploy'
+      RestApiId: !Ref ApiGatewayDeployApi
+
+
+  #Simple-ish method without the IntegrationResponses, RequestTemplates, or MethodResponses properties.
+  ApiGatewayDeployMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: POST
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayDeployIamRole.Arn #change name?
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates: {"application/json": "$input.json('$.body')"}
+        PassthroughBehavior: WHEN_NO_MATCH
+        TimeoutInMillis: 29000
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaDeployFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayDeployResource
+      RestApiId: !Ref ApiGatewayDeployApi
+
+
+
+  ApiGatewayDeployModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      ContentType: 'application/json'
+      RestApiId: !Ref ApiGatewayDeployApi
+      Schema: {} #look into later
+
+  ApiGatewayDeployStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref ApiGatewayDeployDeployment
+      Description: Lambda API Stage v1
+      RestApiId: !Ref ApiGatewayDeployApi
+      StageName: 'v1'
+
+  ApiGatewayDeployDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ApiGatewayDeployMethod
+    Properties:
+      Description: Lambda API Deploy Deployment
+      RestApiId: !Ref ApiGatewayDeployApi
+
+  ApiGatewayDeployIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: LambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaDeployFunction.Arn
+
+  LambdaDeployFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: d3-capstone-bucket
+        S3Key: deploy/development/deploy-development.zip
+      Description: AWS Lambda function
+      FunctionName: 'gitHubToS3'
+      Handler: lambda_function.lambda_handler
+      Layers:
+        - arn:aws:lambda:us-west-2:553035198032:layer:git-lambda2:8
+      MemorySize: 256
+      Role: !GetAtt LambdaDeployIamRole.Arn
+      Runtime: python3.9
+      Timeout: 60
+  
+  
+  LambdaDeployIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+
+  CloudWatchPolices:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "GitHubLambdaCWAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Action: "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:us-west-2:949449017276:*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:us-west-2:949449017276:log-group:/aws/lambda/gitHubToS3:*"
+      Roles: 
+        - Ref: "LambdaDeployIamRole"
+      
+  S3Polices:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "GitHubLambdaS3Access"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action: "s3:PutObject"
+            Resource: "arn:aws:s3:::d3-capstone-bucket/*"
+      Roles:
+        - Ref: "LambdaDeployIamRole"
