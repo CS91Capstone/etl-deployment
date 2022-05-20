@@ -30,7 +30,6 @@ Resources:
       RestApiId: !Ref ApiGatewayDeployApi
 
 
-  #Simple-ish method without the IntegrationResponses, RequestTemplates, or MethodResponses properties.
   ApiGatewayDeployMethod:
     Type: AWS::ApiGateway::Method
     Properties:
@@ -39,7 +38,7 @@ Resources:
       HttpMethod: POST
       Integration:
         ConnectionType: INTERNET
-        Credentials: !GetAtt ApiGatewayDeployIamRole.Arn #change name?
+        Credentials: !GetAtt ApiGatewayDeployIamRole.Arn
         IntegrationHttpMethod: POST
         IntegrationResponses:
           - StatusCode: 200
@@ -62,7 +61,7 @@ Resources:
     Properties:
       ContentType: 'application/json'
       RestApiId: !Ref ApiGatewayDeployApi
-      Schema: {} #look into later
+      Schema: {}
 
   ApiGatewayDeployStage:
     Type: AWS::ApiGateway::Stage
@@ -108,7 +107,7 @@ Resources:
       Code:
         S3Bucket: d3-capstone-bucket
         S3Key: deploy/development/deploy-development.zip
-      Description: AWS Lambda function
+      Description: AWS Lambda function that pulls deployment code from github
       FunctionName: 'gitHubToS3'
       Handler: lambda_function.lambda_handler
       Layers:
@@ -133,7 +132,7 @@ Resources:
               - 'sts:AssumeRole'
       Path: '/'
 
-  CloudWatchPolices:
+  CloudWatchPolicy:
     Type: "AWS::IAM::Policy"
     Properties: 
       PolicyName: "GitHubLambdaCWAccess"
