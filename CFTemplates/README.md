@@ -1,4 +1,4 @@
-# CloudFormationTemplates
+# CloudFormation Templates
 
 This directory contains YAML scripts for use with AWS CloudFormation.
 All of the templates assume the following things:
