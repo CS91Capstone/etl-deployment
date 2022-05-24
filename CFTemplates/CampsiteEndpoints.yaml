@@ -1,0 +1,989 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: AWS API Gateway with a Lambda Integration
+Resources:
+
+  ApiGatewayDatabaseApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      ApiKeySourceType: HEADER
+      Description: An API Gateway with a Lambda Integration for Campsites data
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      Name: campsite-api
+
+  #general model for api request/response payload?
+  ApiGatewayDatabaseModel:
+    Type: AWS::ApiGateway::Model
+    Properties:
+      ContentType: 'application/json'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+      Schema: {} #look into later
+  
+  #is this needed?
+  ApiGatewayDeployStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      DeploymentId: !Ref ApiGatewayDatabaseApiDeployment
+      Description: Campsties API Stage v1 
+      RestApiId: !Ref ApiGatewayDatabaseApi
+      StageName: 'version1'
+
+  #Deploys the API after its creation
+  ApiGatewayDatabaseApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ApiGatewayCampsitesMethod #add more with future methods
+    Properties:
+      Description: Campsite Database API Deployment
+      RestApiId: !Ref ApiGatewayDatabaseApi
+  
+  ApiGatewayApiResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt ApiGatewayDatabaseApi.RootResourceId
+      PathPart: 'api'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayV1Resource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayApiResource
+      PathPart: 'v1'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  #Resource for "accessible_campsites" enpoint
+  ApiGatewayAccessibleCampsitesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayV1Resource
+      PathPart: 'accessible_campsites'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+  
+  #Resource for "campsites" endpoints
+  ApiGatewayCampsitesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayV1Resource
+      PathPart: 'campsites'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+#Child resources under the "campsites" resource
+  ApiGatewayAccessibilityResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayCampsitesResource
+      PathPart: 'accessibility'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayCoordinatesResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayCampsitesResource
+      PathPart: 'coordinates'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+  
+
+  ApiGatewayFacilityIDResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayCampsitesResource
+      PathPart: 'facility_id'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+  
+  ApiGatewayLocationResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayCampsitesResource
+      PathPart: 'location'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayNameResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayCampsitesResource
+      PathPart: 'name'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+  
+  ApiGatewayTypeResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref ApiGatewayCampsitesResource
+      PathPart: 'type'
+      RestApiId: !Ref ApiGatewayDatabaseApi
+      
+#ACCESSIBLE_CAMPSITES------------------------------------------------------------------------
+  ApiGatewayAccessibleCampsitesMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayAccessibleCampsitesIamRole.Arn
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates: {"application/json": "$input.json('$.body')"}
+        PassthroughBehavior: WHEN_NO_MATCH
+        TimeoutInMillis: 29000
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaAccessibleCampsitesFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayAccessibleCampsitesResource
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayAccessibleCampsitesIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: getAccessibleCampsitesLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaAccessibleCampsitesFunction.Arn
+
+  LambdaAccessibleCampsitesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: d3-capstone-bucket
+        S3Key: api/development/campsite_accessible.zip  #check if this is correct
+      Description: AWS Lambda function for getting all accessible campsites
+      Environment:
+        Variables:
+          MYSQL_DATABASE: capstone
+          MYSQL_HOST: test-db.csfyol1ukmqu.us-west-2.rds.amazonaws.com
+          MYSQL_PASS: capstonepassword
+          MYSQL_PORT: 3306
+          MYSQL_USER: capstone
+      FunctionName: 'get_Accessible_Campsites'
+      Handler: campsite_accessible.lambda_handler #fix this
+      Layers:
+        - arn:aws:lambda:us-west-2:949449017276:layer:pymysql:1
+      MemorySize: 256
+      Role: !GetAtt LambdaAccessibleCampsitesIamRole.Arn
+      Runtime: python3.9
+      Timeout: 60
+  
+  LambdaAccessibleCampsitesIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/' #what is this for?
+
+  CloudWatchAccessibleCampsitesPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "get_Accessible_CampsitesLambdaCWAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Action: "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:us-west-2:949449017276:*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:us-west-2:949449017276:log-group:/aws/lambda/get_Accessible_Campsites:*"
+      Roles: 
+        - Ref: "LambdaAccessibleCampsitesIamRole"
+  #--------------------------------------------------------------------------------------------
+
+#CAMPSITES-----------------------------------------------------------------------------------
+  
+  ApiGatewayCampsitesMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayCampsitesIamRole.Arn
+        IntegrationHttpMethod: POST
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates: {"application/json": "$input.json('$.body')"}
+        PassthroughBehavior: WHEN_NO_MATCH
+        TimeoutInMillis: 29000
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaCampsitesFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayCampsitesResource
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayCampsitesIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: getCampsitesLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaCampsitesFunction.Arn
+
+  LambdaCampsitesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: d3-capstone-bucket
+        S3Key: api/development/campsites.zip
+      Description: AWS Lambda function for getting all campsites
+      Environment:
+        Variables:
+          MYSQL_DATABASE: capstone
+          MYSQL_HOST: test-db.csfyol1ukmqu.us-west-2.rds.amazonaws.com
+          MYSQL_PASS: capstonepassword
+          MYSQL_PORT: 3306
+          MYSQL_USER: capstone
+      FunctionName: 'get_Campsites'
+      Handler: campsites.handler
+      Layers:
+        - arn:aws:lambda:us-west-2:949449017276:layer:pymysql:1
+      MemorySize: 256
+      Role: !GetAtt LambdaCampsitesIamRole.Arn
+      Runtime: python3.9
+      Timeout: 60
+  
+  LambdaCampsitesIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/' #what is this for?
+
+  CloudWatchCampsitesPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "get_CampsitesLambdaCWAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Action: "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:us-west-2:949449017276:*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:us-west-2:949449017276:log-group:/aws/lambda/get_Campsites:*"
+      Roles: 
+        - Ref: "LambdaCampsitesIamRole"
+  #--------------------------------------------------------------------------------------------
+  
+#ACCESSIBILITY-------------------------------------------------------------------------------
+  ApiGatewayAccessibilityMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: GET
+      RequestParameters: 
+        method.request.querystring.campsite_id: true
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayAccessibilityIamRole.Arn
+        IntegrationHttpMethod: POST
+        RequestParameters:
+          integration.request.path.action: method.request.querystring.campsite_id
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates: 
+              {"application/json": "$input.json('$.body')"}
+        RequestTemplates: 
+          "application/json": "{\n \"campsite_id\": \"$input.params('campsite_id')\" \n}"
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        TimeoutInMillis: 29000
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaAccessibilityFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayAccessibilityResource
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayAccessibilityIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: getAccessibilityLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaAccessibilityFunction.Arn
+
+  LambdaAccessibilityFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: d3-capstone-bucket
+        S3Key: api/development/accessibility.zip
+      Description: AWS Lambda function for getting the accessibility status of a specified campsite
+      Environment:
+        Variables:
+          MYSQL_DATABASE: capstone
+          MYSQL_HOST: test-db.csfyol1ukmqu.us-west-2.rds.amazonaws.com
+          MYSQL_PASS: capstonepassword
+          MYSQL_PORT: 3306
+          MYSQL_USER: capstone
+      FunctionName: 'get_Accessibility'
+      Handler: accessibility.lambda_handler 
+      Layers:
+        - arn:aws:lambda:us-west-2:949449017276:layer:pymysql:1
+      MemorySize: 256
+      Role: !GetAtt LambdaAccessibilityIamRole.Arn
+      Runtime: python3.9
+      Timeout: 60
+  
+  LambdaAccessibilityIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/' #what is this for?
+
+  CloudWatchAccessibilityPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "get_AccessibilityLambdaCWAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Action: "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:us-west-2:949449017276:*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:us-west-2:949449017276:log-group:/aws/lambda/get_Accessibility:*"
+      Roles: 
+        - Ref: "LambdaAccessibilityIamRole"
+  #--------------------------------------------------------------------------------------------
+
+#COORDINATES---------------------------------------------------------------------------------
+  ApiGatewayCoordinatesMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: GET
+      RequestParameters: 
+        method.request.querystring.campsite_id: true
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayCoordinatesIamRole.Arn
+        IntegrationHttpMethod: POST
+        RequestParameters:
+          integration.request.path.action: method.request.querystring.campsite_id
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates: 
+              {"application/json": "$input.json('$.body')"}
+        RequestTemplates: 
+          "application/json": "{\n \"campsite_id\": \"$input.params('campsite_id')\" \n}"
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        TimeoutInMillis: 29000
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaCoordinatesFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayCoordinatesResource
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayCoordinatesIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: getCoordinatesLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaCoordinatesFunction.Arn
+
+  LambdaCoordinatesFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: d3-capstone-bucket
+        S3Key: api/development/coordinates.zip
+      Description: AWS Lambda function for getting the coordinates of a specified campsite
+      Environment:
+        Variables:
+          MYSQL_DATABASE: capstone
+          MYSQL_HOST: test-db.csfyol1ukmqu.us-west-2.rds.amazonaws.com
+          MYSQL_PASS: capstonepassword
+          MYSQL_PORT: 3306
+          MYSQL_USER: capstone
+      FunctionName: 'get_Coordinates'
+      Handler: coordinates.lambda_handler
+      Layers:
+        - arn:aws:lambda:us-west-2:949449017276:layer:pymysql:1
+      MemorySize: 256
+      Role: !GetAtt LambdaCoordinatesIamRole.Arn
+      Runtime: python3.9
+      Timeout: 60
+  
+  LambdaCoordinatesIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+
+  CloudWatchCoordinatesPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "get_CoordinatesLambdaCWAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Action: "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:us-west-2:949449017276:*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:us-west-2:949449017276:log-group:/aws/lambda/get_Accessibility:*"
+      Roles: 
+        - Ref: "LambdaCoordinatesIamRole"
+  #------------------------------------------------------------------------------------------
+
+#FACILITYID----------------------------------------------------------------------------------
+  ApiGatewayFacilityIDMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: GET
+      RequestParameters: 
+        method.request.querystring.campsite_id: true
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayFacilityIDIamRole.Arn
+        IntegrationHttpMethod: POST
+        RequestParameters:
+          integration.request.path.action: method.request.querystring.campsite_id
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates: 
+              {"application/json": "$input.json('$.body')"}
+        RequestTemplates: 
+          "application/json": "{\n \"campsite_id\": \"$input.params('campsite_id')\" \n}"
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        TimeoutInMillis: 29000
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaFacilityIDFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayFacilityIDResource
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayFacilityIDIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: getFacilityIDLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaFacilityIDFunction.Arn
+
+  LambdaFacilityIDFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: d3-capstone-bucket
+        S3Key: api/development/facility_id.zip
+      Description: AWS Lambda function for getting the facility ID for a specified campsite
+      Environment:
+        Variables:
+          MYSQL_DATABASE: capstone
+          MYSQL_HOST: test-db.csfyol1ukmqu.us-west-2.rds.amazonaws.com
+          MYSQL_PASS: capstonepassword
+          MYSQL_PORT: 3306
+          MYSQL_USER: capstone
+      FunctionName: 'get_FacilityID'
+      Handler: facility_id.lambda_handler
+      Layers:
+        - arn:aws:lambda:us-west-2:949449017276:layer:pymysql:1
+      MemorySize: 256
+      Role: !GetAtt LambdaFacilityIDIamRole.Arn
+      Runtime: python3.9
+      Timeout: 60
+
+  LambdaFacilityIDIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+  
+  CloudWatchFacilityIDPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "get_FacilityIDLambdaCWAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Action: "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:us-west-2:949449017276:*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:us-west-2:949449017276:log-group:/aws/lambda/get_FacilityID:*"
+      Roles: 
+        - Ref: "LambdaFacilityIDIamRole"
+  #------------------------------------------------------------------------------------------
+
+#LOCATION------------------------------------------------------------------------------------
+  ApiGatewayLocationMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: GET
+      RequestParameters: 
+        method.request.querystring.campsite_id: true
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayLocationIamRole.Arn
+        IntegrationHttpMethod: POST
+        RequestParameters:
+          integration.request.path.action: method.request.querystring.campsite_id
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates: 
+              {"application/json": "$input.json('$.body')"}
+        RequestTemplates: 
+          "application/json": "{\n \"campsite_id\": \"$input.params('campsite_id')\" \n}"
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        TimeoutInMillis: 29000
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaLocationFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayLocationResource
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayLocationIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: getLocationLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaLocationFunction.Arn
+
+  LambdaLocationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: d3-capstone-bucket
+        S3Key: api/development/location.zip
+      Description: AWS Lambda function for getting the location of a specified campsite
+      Environment:
+        Variables:
+          MYSQL_DATABASE: capstone
+          MYSQL_HOST: test-db.csfyol1ukmqu.us-west-2.rds.amazonaws.com
+          MYSQL_PASS: capstonepassword
+          MYSQL_PORT: 3306
+          MYSQL_USER: capstone
+      FunctionName: 'get_Location'
+      Handler: location.lambda_handler
+      Layers:
+        - arn:aws:lambda:us-west-2:949449017276:layer:pymysql:1
+      MemorySize: 256
+      Role: !GetAtt LambdaLocationIamRole.Arn
+      Runtime: python3.9
+      Timeout: 60
+  
+  LambdaLocationIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+
+  CloudWatchLocationPolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "get_LocationLambdaCWAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Action: "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:us-west-2:949449017276:*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:us-west-2:949449017276:log-group:/aws/lambda/get_Location:*"
+      Roles: 
+        - Ref: "LambdaLocationIamRole"
+  #------------------------------------------------------------------------------------------
+
+#NAME----------------------------------------------------------------------------------------
+  ApiGatewayNameMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: GET
+      RequestParameters: 
+        method.request.querystring.campsite_id: true
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayNameIamRole.Arn
+        IntegrationHttpMethod: POST
+        RequestParameters:
+          integration.request.path.action: method.request.querystring.campsite_id
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates: 
+              {"application/json": "$input.json('$.body')"}
+        RequestTemplates: 
+          "application/json": "{\n \"campsite_id\": \"$input.params('campsite_id')\" \n}"
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        TimeoutInMillis: 29000
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaNameFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayNameResource
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayNameIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: getNameLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaNameFunction.Arn
+
+  LambdaNameFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: d3-capstone-bucket
+        S3Key: api/development/name.zip
+      Description: AWS Lambda function for getting the name of a specified campsite
+      Environment:
+        Variables:
+          MYSQL_DATABASE: capstone
+          MYSQL_HOST: test-db.csfyol1ukmqu.us-west-2.rds.amazonaws.com
+          MYSQL_PASS: capstonepassword
+          MYSQL_PORT: 3306
+          MYSQL_USER: capstone
+      FunctionName: 'get_Name'
+      Handler: name.lambda_handler
+      Layers:
+        - arn:aws:lambda:us-west-2:949449017276:layer:pymysql:1
+      MemorySize: 256
+      Role: !GetAtt LambdaNameIamRole.Arn
+      Runtime: python3.9
+      Timeout: 60
+  
+  LambdaNameIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/' 
+
+  CloudWatchNamePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "get_NameLambdaCWAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Action: "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:us-west-2:949449017276:*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:us-west-2:949449017276:log-group:/aws/lambda/get_Name:*"
+      Roles: 
+        - Ref: "LambdaNameIamRole"
+  #------------------------------------------------------------------------------------------
+
+#TYPE----------------------------------------------------------------------------------------
+  ApiGatewayTypeMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+      HttpMethod: GET
+      RequestParameters: 
+        method.request.querystring.campsite_id: true
+      Integration:
+        ConnectionType: INTERNET
+        Credentials: !GetAtt ApiGatewayTypeIamRole.Arn
+        IntegrationHttpMethod: POST
+        RequestParameters:
+          integration.request.path.action: method.request.querystring.campsite_id
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseTemplates: 
+              {"application/json": "$input.json('$.body')"}
+        RequestTemplates: 
+          "application/json": "{\n \"campsite_id\": \"$input.params('campsite_id')\" \n}"
+        PassthroughBehavior: WHEN_NO_TEMPLATES
+        TimeoutInMillis: 29000
+        Type: AWS
+        Uri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaTypeFunction.Arn}/invocations'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels: { "application/json": "Empty" }
+      OperationName: 'lambda'
+      ResourceId: !Ref ApiGatewayTypeResource
+      RestApiId: !Ref ApiGatewayDatabaseApi
+
+  ApiGatewayTypeIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ''
+            Effect: 'Allow'
+            Principal:
+              Service:
+                - 'apigateway.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+      Policies:
+        - PolicyName: getTypeLambdaAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action: 'lambda:*'
+                Resource: !GetAtt LambdaTypeFunction.Arn
+
+  LambdaTypeFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: d3-capstone-bucket
+        S3Key: api/development/type.zip
+      Description: AWS Lambda function for getting the campsite type of a specified campsite
+      Environment:
+        Variables:
+          MYSQL_DATABASE: capstone
+          MYSQL_HOST: test-db.csfyol1ukmqu.us-west-2.rds.amazonaws.com
+          MYSQL_PASS: capstonepassword
+          MYSQL_PORT: 3306
+          MYSQL_USER: capstone
+      FunctionName: 'get_Type'
+      Handler: type.lambda_handler
+      Layers:
+        - arn:aws:lambda:us-west-2:949449017276:layer:pymysql:1
+      MemorySize: 256
+      Role: !GetAtt LambdaTypeIamRole.Arn
+      Runtime: python3.9
+      Timeout: 60
+  
+  LambdaTypeIamRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service:
+                - 'lambda.amazonaws.com'
+            Action:
+              - 'sts:AssumeRole'
+      Path: '/'
+
+  CloudWatchTypePolicy:
+    Type: "AWS::IAM::Policy"
+    Properties: 
+      PolicyName: "get_TypeLambdaCWAccess"
+      PolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: "Allow"
+            Action: "logs:CreateLogGroup"
+            Resource: "arn:aws:logs:us-west-2:949449017276:*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource: "arn:aws:logs:us-west-2:949449017276:log-group:/aws/lambda/get_Type:*"
+      Roles: 
+        - Ref: "LambdaTypeIamRole"
+  #------------------------------------------------------------------------------------------
+
