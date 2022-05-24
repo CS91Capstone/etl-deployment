@@ -1,23 +1,4 @@
 # ETL Deployment
-
-#### WARNING - MUST BE RUN FROM INSIDE THE DIRECTORY THAT THE DOCKER FILE IS IN
-
-&nbsp;
-
-Steps:
-- Logs docker in to AWS using local AWS cli credentials
-- Builds docker image using Dockerfile
-- Tags docker image
-- Upload docker image to ECR
-
-&nbsp;
-
-TO Run:
-
-python3 deploy.py {tag} 
-
-&nbsp;
-
 ## Developer API
 The developer API is located inside the `/endpoints/deploy-development`. It is used to pull Lambda function code from github, package them, and store them in S3 Bucket named d3-capstone-bucket.
 - This Lambda function can be hooked up with AWS API Gateway to form an API endpoint for developer or it can be invoke in a Github Actions.
