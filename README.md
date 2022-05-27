@@ -24,12 +24,6 @@ The Lambda function can be integrated with AWS API Gateway which can then be cal
   ```
 - When used in Github Actions. The [invoke-aws-lambda](https://github.com/marketplace/actions/invoke-aws-lambda) action can be used. A body with same format as above would then need to be present in the Payload section of that action.
 
-### Potential Feature
-- Create additional Lambda function and endpoint to allow developer to push ALL code in the `/endpoints` folder into S3 bucket
-  - One problem with this endpoint is the timeout limit on AWS API Gateway which is 30 seconds. It would take more than 30 seconds to push ALL code into S3 bucket.
-  - Potential workaround:
-    - Make Lambda function and API Gateway async (User wouldn't be able to receive response back from the Lambda function)
-
 ## CloudFormation Templates
 
 This directory contains YAML scripts for use with AWS CloudFormation.
