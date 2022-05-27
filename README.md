@@ -26,15 +26,20 @@ The Lambda function can be integrated with AWS API Gateway which can then be cal
 
 ## CloudFormation Templates
 
-This directory contains YAML scripts for use with AWS CloudFormation.
+This directory contains YAML templates for use with AWS CloudFormation.
 All of the templates assume the following things:
 * There are no resources already using the custom names defined in the templates
 * The template is being used on an account with the AWS account ID of 949449017276 
 * There is an S3Bucket by the name d3-capstone-bucket
 * The file paths for the Lambda function code are correct and that there are zip files at the locations given in the Lambda Function specifications
 * The lambda handler name defined for each of the Lambda Functions created matches the specifications found in the each lambda's code
-* There is an rds database with the specifications and log in credentials defined within the templates (applicable for the CampsiteEndpoints templates)
+* There is an RDS database with the specifications and log in credentials defined within the templates (applicable for the CampsiteEndpoints templates)
 
+If you plan on using these templates whithout all of these assumptions being true then you will need to edit the templates. These are some, but potentially not all, of the changes that will need to be made to the templates:
+* Change the AWS account information defined in the template (e.g. AWS account ID)
+* Change all S3 Bucket URI within the template to match the S3 you intend to use
+* Change the lambda handler name defined in the templates for each Lambda Function (if they don't already match)
+* The RDS database will need to be set up and the database access variables for each Lambda Function in the template will need to be updated
 
 ### CodeDeployment.yaml
 
